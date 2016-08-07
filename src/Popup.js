@@ -54,7 +54,7 @@ class Popup extends React.Component {
 
   constructor(...args) {
     super(...args);
-    this.isMounted = mountManager(this);
+    this.mounted = mountManager(this);
     this.state = {
       initialRender: true,
       status: this.props.open ? OPENING : CLOSED
@@ -233,7 +233,7 @@ class Popup extends React.Component {
   }
 
   safeSetState(nextState, callback) {
-    if (this.isMounted()) {
+    if (this.mounted()) {
       this.setState(nextState, this.setNextCallback(callback));
     }
   }
