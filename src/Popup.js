@@ -6,6 +6,7 @@ import camelizeStyle from 'dom-helpers/util/camelizeStyle';
 import config from './util/configuration';
 import cn from 'classnames';
 import compat from './util/compat';
+import mountManager from './util/mountManager';
 
 var transform = camelizeStyle(config.animate.transform)
 
@@ -53,7 +54,7 @@ class Popup extends React.Component {
 
   constructor(...args) {
     super(...args);
-
+    this.isMounted = mountManager(this);
     this.state = {
       initialRender: true,
       status: this.props.open ? OPENING : CLOSED
@@ -100,10 +101,6 @@ class Popup extends React.Component {
     }
   }
 
-  componentWillUnmount() {
-    this.unmounted = true;
-  }
-
   render() {
     var { className, dropUp, style } = this.props
       , { status, height } = this.state;
@@ -119,6 +116,7 @@ class Popup extends React.Component {
           height,
           ...style
         }}
+        ref={r => this.element = r}
         className={cn(className,
           'rw-popup-container',
           dropUp && 'rw-dropup',
@@ -148,7 +146,7 @@ class Popup extends React.Component {
 
   open() {
     this.cancelNextCallback()
-    var el = compat.findDOMNode(this).firstChild
+    var el = this.element.firstChild
       , height = this.height();
 
     this.props.onOpening()
@@ -167,7 +165,7 @@ class Popup extends React.Component {
 
   close() {
     this.cancelNextCallback()
-    var el = compat.findDOMNode(this).firstChild
+    var el = this.element.firstChild
       , height = this.height();
 
     this.props.onClosing()
@@ -199,7 +197,7 @@ class Popup extends React.Component {
   }
 
   height() {
-    var container = compat.findDOMNode(this)
+    var container = this.element
       , content = container.firstChild
       , margin = parseInt(css(content, 'margin-top'), 10)
                + parseInt(css(content, 'margin-bottom'), 10);
@@ -235,7 +233,7 @@ class Popup extends React.Component {
   }
 
   safeSetState(nextState, callback) {
-    if (!this.unmounted) {
+    if (this.isMounted()) {
       this.setState(nextState, this.setNextCallback(callback));
     }
   }
