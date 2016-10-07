@@ -13,7 +13,11 @@ import CustomPropTypes from './util/propTypes';
 import PlainList from './List';
 import GroupableList from './ListGroupable';
 
+import * as Filter from './util/Filter';
 import validateList from './util/validateListInterface';
+import createScrollManager from './util/scrollManager';
+import createFocusManager from './util/focusManager';
+import withRightToLeft from './util/withRightToLeft';
 import { dataItem, dataText, valueMatcher } from './util/dataHelpers';
 import { widgetEditable, isDisabled, isReadOnly } from './util/interaction';
 import { instanceId, notify, isFirstFocusedRender } from './util/widgetHelpers';
@@ -22,7 +26,6 @@ var compatCreate = (props, msgs) => typeof msgs.createNew === 'function'
   ? msgs.createNew(props)
   : [<strong key='dumb'>{`"${props.searchTerm}"`}</strong>, ' ' + msgs.createNew]
 
-let { splat } = _;
 
 var propTypes = {
   ...Popup.propTypes,
@@ -74,66 +77,31 @@ var propTypes = {
   })
 };
 
-var Multiselect = React.createClass({
+@withRightToLeft
+class Multiselect extends React.Component {
 
-  displayName: 'Multiselect',
+  static propTypes = propTypes;
 
-  mixins: [
-    require('./mixins/TimeoutMixin'),
-    require('./mixins/DataFilterMixin'),
-    require('./mixins/PopupScrollToMixin'),
-    require('./mixins/RtlParentContextMixin'),
-    require('./mixins/FocusMixin')({
-      willHandle(focused) {
-        focused && this.focus()
-      },
-      didHandle(focused) {
-        if (!focused) this.close()
-
-        if (!focused && this.refs.tagList)
-          this.setState({ focusedTag: null })
-
-        // if (focused && !this.props.open && !this.props.readOnly === true)
-        //   this.open()
-      }
-    })
-  ],
-
-  propTypes,
-
-  getDefaultProps() {
-    return {
-      data: [],
-      filter: 'startsWith',
-      value: [],
-      open: false,
-      searchTerm: '',
-      messages: {
-        createNew:     '(create new tag)',
-        emptyList:     'There are no items in this list',
-        emptyFilter:   'The filter returned no results',
-        tagsLabel:     'selected items',
-        selectedItems: 'selected items',
-        noneSelected:  'no selected items',
-        removeLabel:   'remove selected item'
-      }
+  static defaultProps = {
+    data: [],
+    filter: 'startsWith',
+    value: [],
+    open: false,
+    searchTerm: '',
+    messages: {
+      createNew:     '(create new tag)',
+      emptyList:     'There are no items in this list',
+      emptyFilter:   'The filter returned no results',
+      tagsLabel:     'selected items',
+      selectedItems: 'selected items',
+      noneSelected:  'no selected items',
+      removeLabel:   'remove selected item'
     }
-  },
+  };
 
-  getInitialState(){
-    var { data, value, valueField, searchTerm } = this.props
-      , dataItems = splat(value).map( item => dataItem(data, item, valueField))
-      , processedData = this.process(data, dataItems, searchTerm)
+  constructor(...args) {
+    super(...args);
 
-    return {
-      focusedTag:    null,
-      focusedItem:   processedData[0],
-      processedData: processedData,
-      dataItems:     dataItems
-    }
-  },
-
-  componentWillMount() {
     this.inputId = instanceId(this, '_input')
     this.tagsId = instanceId(this, '_taglist')
     this.notifyId = instanceId(this, '_notify_area')
@@ -141,287 +109,99 @@ var Multiselect = React.createClass({
     this.createId = instanceId(this, '_createlist_option')
     this.activeTagId = instanceId(this, '_taglist_active_tag')
     this.activeOptionId = instanceId(this, '_listbox_active_option')
-  },
+
+    this.handleScroll = createScrollManager(this)
+    this.focusManager = createFocusManager(this, {
+      willHandle: this.handleFocusWillChange,
+      didHandle: this.handleFocusDidChange,
+    })
+
+    this.state = {
+      focusedTag: null,
+      ...this.getStateFromProps(this.props),
+    };
+  }
+
+  componentWillReceiveProps(nextProps) {
+    this.setState(this.getStateFromProps(nextProps))
+  }
 
   componentDidUpdate() {
     this.refs.list && validateList(this.refs.list)
-  },
+  }
 
-  componentWillReceiveProps(nextProps) {
-    var { data, value, valueField, searchTerm } = nextProps
-      , values = _.splat(value)
-      , current = this.state.focusedItem
-      , items  = this.process(data, values, searchTerm)
+  getStateFromProps(props) {
+    let {
+      data, valueField, textField, searchTerm, minLength, caseSensitive, filter
+    } = props
 
-    this.setState({
-      processedData: items,
-      focusedItem: items.indexOf(current) === -1 ? items[0] : current,
-      dataItems: values.map( item => dataItem(data, item, valueField))
+    let values = _.splat(props.value);
+    let dataItems = values.map(item => dataItem(data, item, valueField));
+
+    data = data.filter(i =>
+      !values.some(v => valueMatcher(i, v, valueField))
+    );
+
+    this._lengthWithoutValues = data.length;
+
+    data = Filter.filter(data, {
+      filter,
+      searchTerm,
+      minLength,
+      caseSensitive,
+      textField,
     })
-  },
 
-  renderCreateItem(messages) {
-    let { searchTerm } = this.props;
-    let createIsFocused = this.isCreateTagFocused();
+    let current = this.state && this.state.focusedItem;
 
-    return (
-      <ul
-        role='listbox'
-        id={this.createId}
-        className="rw-list rw-multiselect-create-tag"
-      >
-        <li
-          role='option'
-          onClick={() => this.handleCreate(searchTerm)}
-          id={createIsFocused ? this.activeOptionId : null}
-          className={cn(
-            'rw-list-option',
-            'rw-create-list-option',
-            createIsFocused && 'rw-state-focus'
-          )}
-        >
-          {compatCreate(this.props, messages)}
-        </li>
-      </ul>
-    )
-  },
+    return {
+      data,
+      dataItems,
+      focusedItem: data.indexOf(current) === -1 ? data[0] : current,
+    }
+  }
 
-  renderInput(ownedIds) {
-    let {
-        searchTerm
-      , maxLength
-      , tabIndex
-      , busy
-      , autoFocus
-      , open } = this.props;
+  handleFocusWillChange = (focused) => {
+    if (focused) this.focus()
+  }
 
-    let { focusedItem, focusedTag } = this.state;
+  handleFocusDidChange = (focused) => {
+    if (focused) return
 
-    let disabled = isDisabled(this.props)
-    let readOnly = isReadOnly(this.props)
-    let active = open
-      ? (focusedItem || this.isCreateTagFocused())
-        && this.activeOptionId
-      : focusedTag && this.activeTagId;
+    this.close()
 
-    return (
-      <SelectInput
-        ref='input'
-        autoFocus={autoFocus}
-        tabIndex={tabIndex || 0}
-        role='listbox'
-        aria-expanded={!!open}
-        aria-busy={!!busy}
-        aria-owns={ownedIds}
-        aria-haspopup={true}
-        aria-activedescendant={active || null}
-        value={searchTerm}
-        maxLength={maxLength}
-        disabled={disabled}
-        readOnly={readOnly}
-        placeholder={this.getPlaceholder()}
-        onKeyDown={this.handleSearchKeyDown}
-        onKeyUp={this.handleSearchKeyUp}
-        onChange={this.handleInputChange}
-      />
-    )
-  },
+    if (this.refs.tagList)
+      this.setState({ focusedTag: null })
+  }
 
-  renderList(List, messages) {
-    let { inputId, activeOptionId, listId } = this;
-    let { open } = this.props;
-    let { focusedItem } = this.state;
-
-    let listProps = _.pickProps(this.props, List);
-    let items  = this._data();
-
-    return (
-      <List ref="list" key={0}
-        {...listProps}
-        id={listId}
-        activeId={activeOptionId}
-        data={items}
-        focused={focusedItem}
-        onSelect={this.handleSelect}
-        onMove={this._scrollTo}
-        aria-live='polite'
-        aria-labelledby={inputId}
-        aria-hidden={!open}
-        messages={{
-          emptyList: this._lengthWithoutValues
-            ? messages.emptyFilter
-            : messages.emptyList
-        }}
-      />
-    )
-  },
-
-  renderNotificationArea(messages) {
-    let { textField } = this.props;
-    let { focused, dataItems } = this.state;
-
-    let itemText = dataItems.map(item => dataText(item, textField)).join(', ')
-
-    return (
-      <span
-        id={this.notifyId}
-        role="status"
-        className='rw-sr'
-        aria-live='assertive'
-        aria-atomic="true"
-        aria-relevant="additions removals text"
-      >
-        {focused && (
-          dataItems.length
-            ? (messages.selectedItems + ': ' + itemText)
-            : messages.noneSelected
-        )}
-      </span>
-    )
-  },
-
-  renderTags(messages) {
-    let { disabled, readOnly, valueField, textField } = this.props;
-    let { focusedTag, dataItems } = this.state;
-
-    let Component = this.props.tagComponent;
-
-    return (
-      <TagList
-        ref='tagList'
-        id={this.tagsId}
-        activeId={this.activeTagId}
-        valueField={valueField}
-        textField={textField}
-        label={messages.tagsLabel}
-        value={dataItems}
-        focused={focusedTag}
-        disabled={disabled}
-        readOnly={readOnly}
-        onDelete={this.handleDelete}
-        valueComponent={Component}
-      />
-    )
-  },
-
-  render() {
-    let {
-        className
-      , groupBy
-      , messages
-      , busy
-      , dropUp
-      , open
-      , duration
-      , listComponent: List } = this.props;
-
-    let { focused, dataItems } = this.state;
-
-    List = List || (groupBy && GroupableList) || PlainList
-
-    let elementProps = _.omitOwnProps(this, List);
-
-    let shouldRenderTags = !!dataItems.length
-      , shouldRenderPopup = isFirstFocusedRender(this) || open
-      , shouldShowCreate = this.shouldShowCreate();
-
-    let inputOwns = `${this.listId} ${this.notifyId} `
-      + (shouldRenderTags ? this.tagsId : '')
-      + (shouldShowCreate ? this.createId : '');
-
-    let disabled = isDisabled(this.props)
-    let readOnly = isReadOnly(this.props)
-
-    messages = msgs(messages);
-
-    return (
-      <Widget
-        {...elementProps}
-        onKeyDown={this.handleKeyDown}
-        onBlur={this.handleBlur}
-        onFocus={this.handleFocus}
-        className={cn(className, 'rw-multiselect')}
-      >
-        {this.renderNotificationArea(messages)}
-        <WidgetPicker
-          open={open}
-          dropUp={dropUp}
-          focused={focused}
-          disabled={disabled}
-          readOnly={readOnly}
-          className="rw-widget-input"
-          onClick={this.handleClick}
-          onTouchEnd={this.handleClick}
-        >
-          <div>
-            {shouldRenderTags &&
-              this.renderTags(messages)
-            }
-            {this.renderInput(inputOwns)}
-          </div>
-
-          <Select
-            busy={busy}
-            icon={focused ? 'caret-down' :''}
-            aria-hidden="true"
-            role="presentational"
-            disabled={disabled || readOnly}
-          />
-        </WidgetPicker>
-
-
-        {shouldRenderPopup &&
-          <Popup
-            dropUp={dropUp}
-            open={open}
-            duration={duration}
-            onOpening={()=> this.refs.list.forceUpdate()}
-          >
-            <div>
-              {this.renderList(List, messages)}
-
-              {shouldShowCreate &&
-                this.renderCreateItem(messages)
-              }
-            </div>
-          </Popup>
-        }
-      </Widget>
-    )
-  },
-
-  _data() {
-    return this.state.processedData
-  },
-
-  handleDelete(value) {
+  handleDelete = (value) => {
+    let { dataItems } = this.state;
     this.focus()
-    this.change(
-      this.state.dataItems.filter( d => d !== value))
-  },
+    this.change(dataItems.filter(d => d !== value))
+  };
 
-  handleSearchKeyDown(e) {
+  handleSearchKeyDown = (e) => {
     if (e.key === 'Backspace' && e.target.value && !this._deletingText)
       this._deletingText = true
-  },
+  };
 
-  handleSearchKeyUp(e) {
+  handleSearchKeyUp = (e) => {
     if (e.key === 'Backspace' && this._deletingText)
       this._deletingText = false
-  },
+  };
 
-  handleInputChange(e) {
+  handleInputChange = (e) => {
     notify(this.props.onSearch, [ e.target.value ])
     this.open()
-  },
+  };
 
   @widgetEditable
-  handleClick() {
+  handleClick = () => {
     this.open()
-  },
+  };
 
   @widgetEditable
-  handleSelect(data) {
+  handleSelect = (data) => {
     if (data === undefined) {
       if (this.props.onCreate)
         this.handleCreate(this.props.searchTerm)
@@ -433,10 +213,10 @@ var Multiselect = React.createClass({
 
     this.close()
     this.focus()
-  },
+  };
 
   @widgetEditable
-  handleCreate(tag) {
+  handleCreate = (tag) => {
     if (tag.trim() === '' )
       return
 
@@ -446,10 +226,10 @@ var Multiselect = React.createClass({
 
     this.close()
     this.focus()
-  },
+  };
 
   @widgetEditable
-  handleKeyDown(e) {
+  handleKeyDown = (e) => {
     let { key, altKey, ctrlKey } = e
       , noSearch = !this.props.searchTerm && !this._deletingText
       , isOpen  = this.props.open;
@@ -518,76 +298,293 @@ var Multiselect = React.createClass({
       e.preventDefault()
       this.open()
     }
-  },
+  };
 
-  @widgetEditable
+  renderCreateItem(messages) {
+    let { searchTerm } = this.props;
+    let createIsFocused = this.isCreateTagFocused();
+
+    return (
+      <ul
+        role='listbox'
+        id={this.createId}
+        className="rw-list rw-multiselect-create-tag"
+      >
+        <li
+          role='option'
+          onClick={() => this.handleCreate(searchTerm)}
+          id={createIsFocused ? this.activeOptionId : null}
+          className={cn(
+            'rw-list-option',
+            'rw-create-list-option',
+            createIsFocused && 'rw-state-focus'
+          )}
+        >
+          {compatCreate(this.props, messages)}
+        </li>
+      </ul>
+    )
+  }
+
+  renderInput(ownedIds) {
+    let {
+        searchTerm
+      , maxLength
+      , tabIndex
+      , busy
+      , autoFocus
+      , open } = this.props;
+
+    let { focusedItem, focusedTag } = this.state;
+
+    let disabled = isDisabled(this.props)
+    let readOnly = isReadOnly(this.props)
+    let active = open
+      ? (focusedItem || this.isCreateTagFocused())
+        && this.activeOptionId
+      : focusedTag && this.activeTagId;
+
+    return (
+      <SelectInput
+        ref='input'
+        autoFocus={autoFocus}
+        tabIndex={tabIndex || 0}
+        role='listbox'
+        aria-expanded={!!open}
+        aria-busy={!!busy}
+        aria-owns={ownedIds}
+        aria-haspopup={true}
+        aria-activedescendant={active || null}
+        value={searchTerm}
+        maxLength={maxLength}
+        disabled={disabled}
+        readOnly={readOnly}
+        placeholder={this.getPlaceholder()}
+        onKeyDown={this.handleSearchKeyDown}
+        onKeyUp={this.handleSearchKeyUp}
+        onChange={this.handleInputChange}
+      />
+    )
+  }
+
+  renderList(List, messages) {
+    let { inputId, activeOptionId, listId } = this;
+    let { open } = this.props;
+    let { focusedItem, data: items } = this.state;
+
+    let listProps = _.pickProps(this.props, List);
+
+    return (
+      <List ref="list" key={0}
+        {...listProps}
+        id={listId}
+        activeId={activeOptionId}
+        data={items}
+        focused={focusedItem}
+        onSelect={this.handleSelect}
+        onMove={this.handleScroll}
+        aria-live='polite'
+        aria-labelledby={inputId}
+        aria-hidden={!open}
+        messages={{
+          emptyList: this._lengthWithoutValues
+            ? messages.emptyFilter
+            : messages.emptyList
+        }}
+      />
+    )
+  }
+
+  renderNotificationArea(messages) {
+    let { textField } = this.props;
+    let { focused, dataItems } = this.state;
+
+    let itemText = dataItems.map(item => dataText(item, textField)).join(', ')
+
+    return (
+      <span
+        id={this.notifyId}
+        role="status"
+        className='rw-sr'
+        aria-live='assertive'
+        aria-atomic="true"
+        aria-relevant="additions removals text"
+      >
+        {focused && (
+          dataItems.length
+            ? (messages.selectedItems + ': ' + itemText)
+            : messages.noneSelected
+        )}
+      </span>
+    )
+  }
+
+  renderTags(messages) {
+    let { disabled, readOnly, valueField, textField } = this.props;
+    let { focusedTag, dataItems } = this.state;
+
+    let Component = this.props.tagComponent;
+
+    return (
+      <TagList
+        ref='tagList'
+        id={this.tagsId}
+        activeId={this.activeTagId}
+        valueField={valueField}
+        textField={textField}
+        label={messages.tagsLabel}
+        value={dataItems}
+        focused={focusedTag}
+        disabled={disabled}
+        readOnly={readOnly}
+        onDelete={this.handleDelete}
+        valueComponent={Component}
+      />
+    )
+  }
+
+  render() {
+    let {
+        className
+      , groupBy
+      , messages
+      , busy
+      , dropUp
+      , open
+      , duration
+      , listComponent: List } = this.props;
+
+    let { focused, dataItems } = this.state;
+
+    List = List || (groupBy && GroupableList) || PlainList
+
+    let elementProps = _.omitOwnProps(this, List);
+
+    let shouldRenderTags = !!dataItems.length
+      , shouldRenderPopup = isFirstFocusedRender(this) || open
+      , shouldShowCreate = this.shouldShowCreate();
+
+    let inputOwns = `${this.listId} ${this.notifyId} `
+      + (shouldRenderTags ? this.tagsId : '')
+      + (shouldShowCreate ? this.createId : '');
+
+    let disabled = isDisabled(this.props)
+    let readOnly = isReadOnly(this.props)
+
+    messages = msgs(messages);
+
+    return (
+      <Widget
+        {...elementProps}
+        onKeyDown={this.handleKeyDown}
+        onBlur={this.focusManager.handleBlur}
+        onFocus={this.focusManager.handleFocus}
+        className={cn(className, 'rw-multiselect')}
+      >
+        {this.renderNotificationArea(messages)}
+        <WidgetPicker
+          open={open}
+          dropUp={dropUp}
+          focused={focused}
+          disabled={disabled}
+          readOnly={readOnly}
+          className="rw-widget-input"
+          onClick={this.handleClick}
+          onTouchEnd={this.handleClick}
+        >
+          <div>
+            {shouldRenderTags &&
+              this.renderTags(messages)
+            }
+            {this.renderInput(inputOwns)}
+          </div>
+
+          <Select
+            busy={busy}
+            icon={focused ? 'caret-down' :''}
+            aria-hidden="true"
+            role="presentational"
+            disabled={disabled || readOnly}
+          />
+        </WidgetPicker>
+
+
+        {shouldRenderPopup &&
+          <Popup
+            dropUp={dropUp}
+            open={open}
+            duration={duration}
+            onOpening={()=> this.refs.list.forceUpdate()}
+          >
+            <div>
+              {this.renderList(List, messages)}
+
+              {shouldShowCreate &&
+                this.renderCreateItem(messages)
+              }
+            </div>
+          </Popup>
+        }
+      </Widget>
+    )
+  }
+
   change(data) {
-    notify(this.props.onChange, [data])
-    notify(this.props.onSearch, [ '' ])
-  },
+    let { onChange, onSearch } = this.props;
+    notify(onChange, [data])
+    notify(onSearch, [ '' ])
+  }
 
   focus() {
     this.refs.input &&
       this.refs.input.focus()
-  },
+  }
 
   open() {
     if (!this.props.open)
       notify(this.props.onToggle, true)
-  },
+  }
 
   close() {
     notify(this.props.onToggle, false)
-  },
-
-  toggle() {
-    this.props.open
-      ? this.close()
-      : this.open()
-  },
-
-  process(data, values, searchTerm) {
-    var { valueField } = this.props;
-    var items = data.filter( i =>
-      !values.some(v => valueMatcher(i, v, valueField)))
-
-    this._lengthWithoutValues = items.length;
-
-    if (searchTerm)
-      items = this.filter(items, searchTerm)
-
-    return items
-  },
+  }
 
   isCreateTagFocused() {
-    let { focusedItem } = this.state;
+    let { data, focusedItem } = this.state;
 
     if (!this.shouldShowCreate())
       return false;
 
-    return !this._data().length || focusedItem === null;
-  },
+    return !data.length || focusedItem === null;
+  }
 
   shouldShowCreate() {
-    var { textField, searchTerm, onCreate, caseSensitive } = this.props;
+    let { textField, searchTerm, onCreate, caseSensitive } = this.props;
+    let { data, dataItems } = this.state;
 
     if (!onCreate || !searchTerm)
       return false
 
-    var lower = text => caseSensitive ? text : text.toLowerCase();
-    var eq =  v => lower(dataText(v, textField)) === lower(searchTerm);
+    let lower = text => caseSensitive ? text : text.toLowerCase();
+    let eq =  v => lower(dataText(v, textField)) === lower(searchTerm);
 
     // if there is an exact match on textFields: "john" => { name: "john" }, don't show
-    return !this._data().some(eq) && !this.state.dataItems.some(eq)
-  },
-
-  getPlaceholder() {
-    return (this.props.value || []).length
-      ? ''
-      : (this.props.placeholder || '')
+    return !data.some(eq) && !dataItems.some(eq)
   }
 
-})
+  getPlaceholder() {
+    let { value, placeholder } = this.props;
+    return (value && value.length ? '' : placeholder) || ''
+  }
+}
+
+
+export default createUncontrolledWidget(Multiselect, {
+  open: 'onToggle',
+  value: 'onChange',
+  searchTerm: 'onSearch'
+}, ['focus']);
+
 
 function msgs(msgs){
   return {
@@ -600,6 +597,3 @@ function msgs(msgs){
     ...msgs
   }
 }
-
-export default createUncontrolledWidget(Multiselect
-    , { open: 'onToggle', value: 'onChange', searchTerm: 'onSearch' }, ['focus']);
