@@ -88,7 +88,6 @@ return /******/ (function(modules) { // webpackBootstrap
 /***/ function(module, exports) {
 
 	// shim for using process in browser
-
 	var process = module.exports = {};
 
 	// cached from whatever global is present so that test runners that stub it
@@ -99,22 +98,84 @@ return /******/ (function(modules) { // webpackBootstrap
 	var cachedSetTimeout;
 	var cachedClearTimeout;
 
+	function defaultSetTimout() {
+	    throw new Error('setTimeout has not been defined');
+	}
+	function defaultClearTimeout () {
+	    throw new Error('clearTimeout has not been defined');
+	}
 	(function () {
-	  try {
-	    cachedSetTimeout = setTimeout;
-	  } catch (e) {
-	    cachedSetTimeout = function () {
-	      throw new Error('setTimeout is not defined');
+	    try {
+	        if (typeof setTimeout === 'function') {
+	            cachedSetTimeout = setTimeout;
+	        } else {
+	            cachedSetTimeout = defaultSetTimout;
+	        }
+	    } catch (e) {
+	        cachedSetTimeout = defaultSetTimout;
 	    }
-	  }
-	  try {
-	    cachedClearTimeout = clearTimeout;
-	  } catch (e) {
-	    cachedClearTimeout = function () {
-	      throw new Error('clearTimeout is not defined');
+	    try {
+	        if (typeof clearTimeout === 'function') {
+	            cachedClearTimeout = clearTimeout;
+	        } else {
+	            cachedClearTimeout = defaultClearTimeout;
+	        }
+	    } catch (e) {
+	        cachedClearTimeout = defaultClearTimeout;
 	    }
-	  }
 	} ())
+	function runTimeout(fun) {
+	    if (cachedSetTimeout === setTimeout) {
+	        //normal enviroments in sane situations
+	        return setTimeout(fun, 0);
+	    }
+	    // if setTimeout wasn't available but was latter defined
+	    if ((cachedSetTimeout === defaultSetTimout || !cachedSetTimeout) && setTimeout) {
+	        cachedSetTimeout = setTimeout;
+	        return setTimeout(fun, 0);
+	    }
+	    try {
+	        // when when somebody has screwed with setTimeout but no I.E. maddness
+	        return cachedSetTimeout(fun, 0);
+	    } catch(e){
+	        try {
+	            // When we are in I.E. but the script has been evaled so I.E. doesn't trust the global object when called normally
+	            return cachedSetTimeout.call(null, fun, 0);
+	        } catch(e){
+	            // same as above but when it's a version of I.E. that must have the global object for 'this', hopfully our context correct otherwise it will throw a global error
+	            return cachedSetTimeout.call(this, fun, 0);
+	        }
+	    }
+
+
+	}
+	function runClearTimeout(marker) {
+	    if (cachedClearTimeout === clearTimeout) {
+	        //normal enviroments in sane situations
+	        return clearTimeout(marker);
+	    }
+	    // if clearTimeout wasn't available but was latter defined
+	    if ((cachedClearTimeout === defaultClearTimeout || !cachedClearTimeout) && clearTimeout) {
+	        cachedClearTimeout = clearTimeout;
+	        return clearTimeout(marker);
+	    }
+	    try {
+	        // when when somebody has screwed with setTimeout but no I.E. maddness
+	        return cachedClearTimeout(marker);
+	    } catch (e){
+	        try {
+	            // When we are in I.E. but the script has been evaled so I.E. doesn't  trust the global object when called normally
+	            return cachedClearTimeout.call(null, marker);
+	        } catch (e){
+	            // same as above but when it's a version of I.E. that must have the global object for 'this', hopfully our context correct otherwise it will throw a global error.
+	            // Some versions of I.E. have different rules for clearTimeout vs setTimeout
+	            return cachedClearTimeout.call(this, marker);
+	        }
+	    }
+
+
+
+	}
 	var queue = [];
 	var draining = false;
 	var currentQueue;
@@ -139,7 +200,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    if (draining) {
 	        return;
 	    }
-	    var timeout = cachedSetTimeout.call(null, cleanUpNextTick);
+	    var timeout = runTimeout(cleanUpNextTick);
 	    draining = true;
 
 	    var len = queue.length;
@@ -156,7 +217,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    }
 	    currentQueue = null;
 	    draining = false;
-	    cachedClearTimeout.call(null, timeout);
+	    runClearTimeout(timeout);
 	}
 
 	process.nextTick = function (fun) {
@@ -168,7 +229,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    }
 	    queue.push(new Item(fun, args));
 	    if (queue.length === 1 && !draining) {
-	        cachedSetTimeout.call(null, drainQueue, 0);
+	        runTimeout(drainQueue);
 	    }
 	};
 
@@ -927,7 +988,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	'use strict';
 
-	var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol ? "symbol" : typeof obj; };
+	var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
 
 	var idCount = 0;
 
@@ -1447,7 +1508,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    (0, _widgetHelpers.notify)(this.props.onKeyDown, [e]);
 
 	    var change = function change(item, fromList) {
-	      if (!item) return;
+	      if (item == null) return;
 	      fromList ? _this3.handleSelect(item) : _this3.change(item);
 	    };
 
@@ -2162,7 +2223,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	exports.__esModule = true;
 
-	var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol ? "symbol" : typeof obj; };
+	var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
 
 	exports.dataValue = dataValue;
 	exports.dataText = dataText;
@@ -2864,7 +2925,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	}
 
 	function instanceId(component) {
-	  var suffix = arguments.length <= 1 || arguments[1] === undefined ? '' : arguments[1];
+	  var suffix = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : '';
 
 	  component.__id || (component.__id = (0, _.uniqueId)('rw_'));
 	  return (component.props.id || component.__id) + suffix;
@@ -3046,7 +3107,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	exports.__esModule = true;
 
 	exports.default = function (nodeOrComponent) {
-	  var reconcileChildren = arguments.length <= 1 || arguments[1] === undefined ? defaultReconcile : arguments[1];
+	  var reconcileChildren = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : defaultReconcile;
 
 
 	  return {
@@ -3063,7 +3124,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    },
 
 	    ariaActiveDescendant: function ariaActiveDescendant(id) {
-	      var key = arguments.length <= 1 || arguments[1] === undefined ? this.props.ariaActiveDescendantKey : arguments[1];
+	      var key = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : this.props.ariaActiveDescendantKey;
 	      var activeDescendants = this.context.activeDescendants;
 
 	      var current = this.__ariaActiveDescendantId;
@@ -3576,6 +3637,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    propTypes = utils.uncontrolledPropTypes(controlledValues, basePropTypes, displayName);
 
 	    (0, _invariant2.default)(isCompositeComponent || !methods.length, '[uncontrollable] stateless function components cannot pass through methods ' + 'because they have no associated instances. Check component: ' + displayName + ', ' + 'attempting to pass through methods: ' + methods.join(', '));
+
 	    methods = utils.transform(methods, function (obj, method) {
 	      obj[method] = function () {
 	        var _refs$inner;
@@ -3620,6 +3682,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	            _this2._values[key] = nextProps[utils.defaultKey(key)];
 	          }
 	        });
+	      },
+	      getControlledInstance: function getControlledInstance() {
+	        return this.refs.inner;
 	      },
 	      render: function render() {
 	        var _this3 = this;
@@ -3703,7 +3768,6 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	exports.__esModule = true;
 	exports.version = undefined;
-	exports.customPropType = customPropType;
 	exports.uncontrolledPropTypes = uncontrolledPropTypes;
 	exports.getType = getType;
 	exports.getValue = getValue;
@@ -3712,8 +3776,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	exports.chain = chain;
 	exports.transform = transform;
 	exports.each = each;
-	exports.isReactComponent = isReactComponent;
 	exports.has = has;
+	exports.isReactComponent = isReactComponent;
 
 	var _react = __webpack_require__(20);
 
@@ -3725,16 +3789,12 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-	function customPropType(handler, propType, name) {
-
+	function readOnlyPropType(handler, name) {
 	  return function (props, propName) {
-
 	    if (props[propName] !== undefined) {
 	      if (!props[handler]) {
 	        return new Error('You have provided a `' + propName + '` prop to ' + '`' + name + '` without an `' + handler + '` handler. This will render a read-only field. ' + 'If the field should be mutable use `' + defaultKey(propName) + '`. Otherwise, set `' + handler + '`');
 	      }
-
-	      return propType && propType(props, propName, name);
 	    }
 	  };
 	}
@@ -3744,13 +3804,9 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	  if (process.env.NODE_ENV !== 'production' && basePropTypes) {
 	    transform(controlledValues, function (obj, handler, prop) {
-	      var type = basePropTypes[prop];
-
 	      (0, _invariant2.default)(typeof handler === 'string' && handler.trim().length, 'Uncontrollable - [%s]: the prop `%s` needs a valid handler key name in order to make it uncontrollable', displayName, prop);
 
-	      obj[prop] = customPropType(handler, type, displayName);
-
-	      if (type !== undefined) obj[defaultKey(prop)] = type;
+	      obj[prop] = readOnlyPropType(handler, displayName);
 	    }, propTypes);
 	  }
 
@@ -3809,6 +3865,10 @@ return /******/ (function(modules) { // webpackBootstrap
 	  }
 	}
 
+	function has(o, k) {
+	  return o ? Object.prototype.hasOwnProperty.call(o, k) : false;
+	}
+
 	/**
 	 * Copyright (c) 2013-present, Facebook, Inc.
 	 * All rights reserved.
@@ -3819,10 +3879,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	 */
 	function isReactComponent(component) {
 	  return !!(component && component.prototype && component.prototype.isReactComponent);
-	}
-
-	function has(o, k) {
-	  return o ? Object.prototype.hasOwnProperty.call(o, k) : false;
 	}
 	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(1)))
 
@@ -5134,7 +5190,11 @@ return /******/ (function(modules) { // webpackBootstrap
 	  initialView: _react2.default.PropTypes.oneOf(VIEW_OPTIONS),
 
 	  finalView: function finalView(props, propName, componentName) {
-	    var err = _react2.default.PropTypes.oneOf(VIEW_OPTIONS)(props, propName, componentName);
+	    for (var _len = arguments.length, args = Array(_len > 3 ? _len - 3 : 0), _key = 3; _key < _len; _key++) {
+	      args[_key - 3] = arguments[_key];
+	    }
+
+	    var err = _react2.default.PropTypes.oneOf(VIEW_OPTIONS).apply(undefined, [props, propName, componentName].concat(args));
 
 	    if (err) return err;
 	    if (VIEW_OPTIONS.indexOf(props[propName]) < VIEW_OPTIONS.indexOf(props.initialView)) return new Error(('The `' + propName + '` prop: `' + props[propName] + '` cannot be \'lower\' than the `initialView`\n        prop. This creates a range that cannot be rendered.').replace(/\n\t/g, ''));
@@ -5350,7 +5410,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    this.navigate(dir.DOWN, date);
 	  },
 	  changeCurrentDate: function changeCurrentDate(date) {
-	    var currentDate = arguments.length <= 1 || arguments[1] === undefined ? this.props.currentDate : arguments[1];
+	    var currentDate = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : this.props.currentDate;
 
 	    var inRangeDate = this.inRangeValue(date ? new Date(date) : currentDate);
 	    if (_dates2.default.eq(inRangeDate, dateOrNull(currentDate), VIEW_UNIT[this.state.view])) return;
@@ -5924,7 +5984,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	      return _react2.default.createElement(
 	        'td',
 	        { className: 'rw-empty-cell', role: 'presentation' },
-	        ' '
+	        '\xA0'
 	      );
 	    }
 
@@ -6102,7 +6162,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	      case DAY:
 	        return dates.date(date, dates.date(date) + num)
 	      case WEEK:
-	        return dates.date(date, dates.date(date) + (7 * num))
+	        return dates.date(date, dates.date(date) + (7 * num)) 
 	      case MONTH:
 	        return monthMath(date, num)
 	      case DECADE:
@@ -6139,13 +6199,13 @@ return /******/ (function(modules) { // webpackBootstrap
 	          date = dates.milliseconds(date, 0);
 	    }
 
-	    if (unit === DECADE)
+	    if (unit === DECADE) 
 	      date = dates.subtract(date, dates.year(date) % 10, 'year')
-
-	    if (unit === CENTURY)
+	    
+	    if (unit === CENTURY) 
 	      date = dates.subtract(date, dates.year(date) % 100, 'year')
 
-	    if (unit === WEEK)
+	    if (unit === WEEK) 
 	      date = dates.weekday(date, 0, firstOfWeek);
 
 	    return date
@@ -6174,7 +6234,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	  max: function(){
 	    return new Date(Math.max.apply(Math, arguments))
 	  },
-
+	  
 	  inRange: function(day, min, max, unit){
 	    unit = unit || 'day'
 
@@ -6192,13 +6252,13 @@ return /******/ (function(modules) { // webpackBootstrap
 	  year:           createAccessor('FullYear'),
 
 	  decade: function (date, val) {
-	    return val === undefined
+	    return val === undefined 
 	      ? dates.year(dates.startOf(date, DECADE))
 	      : dates.add(date, val + 10, YEAR);
 	  },
 
 	  century: function (date, val) {
-	    return val === undefined
+	    return val === undefined 
 	      ? dates.year(dates.startOf(date, CENTURY))
 	      : dates.add(date, val + 100, YEAR);
 	  },
@@ -6206,8 +6266,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	  weekday: function (date, val, firstDay) {
 	      var weekday = (dates.day(date) + 7 - (firstDay || 0) ) % 7;
 
-	      return val === undefined
-	        ? weekday
+	      return val === undefined 
+	        ? weekday 
 	        : dates.add(date, val - weekday, DAY);
 	  },
 
@@ -6273,7 +6333,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    date = dates.month(date, newMonth)
 
 	    while (newMonth < 0 ) newMonth = 12 + newMonth
-
+	      
 	    //month rollover
 	    if ( dates.month(date) !== ( newMonth % 12))
 	      date = dates.date(date, 0) //move to last of month
@@ -7733,7 +7793,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	  },
 	  getInitialState: function getInitialState() {
 	    var data = this._dates(this.props),
-	        focusedItem = this._closestDate(data, this.props.value);
+	        focusedItem = this._closestDate(data, this.props.value || this.props.currentDate);
 
 	    return {
 	      focusedItem: focusedItem || data[0],
@@ -7742,7 +7802,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	  },
 	  componentWillReceiveProps: function componentWillReceiveProps(nextProps) {
 	    var data = this._dates(nextProps),
-	        focusedItem = this._closestDate(data, nextProps.value),
+	        focusedItem = this._closestDate(data, nextProps.value || this.props.currentDate),
 	        valChanged = !_dates3.default.eq(nextProps.value, this.props.value, 'minutes'),
 	        minChanged = !_dates3.default.eq(nextProps.min, this.props.min, 'minutes'),
 	        maxChanged = !_dates3.default.eq(nextProps.max, this.props.max, 'minutes'),
@@ -8229,7 +8289,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	          icon: 'caret-down',
 	          onClick: this.handleFocus,
 	          label: this.props.messages.decrement,
-	          active: this.state.active === _constants.directions.UP,
+	          active: this.state.active === _constants.directions.DOWN,
 	          disabled: val === this.props.min || this.props.disabled,
 	          onMouseUp: function onMouseUp() {
 	            return _this.handleMouseUp(_constants.directions.DOWN);
@@ -8433,7 +8493,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    };
 	  },
 	  getDefaultState: function getDefaultState() {
-	    var props = arguments.length <= 0 || arguments[0] === undefined ? this.props : arguments[0];
+	    var props = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : this.props;
 
 	    var value = props.value,
 	        decimal = _localizers.number.decimalChar(null, props.culture),
@@ -8530,7 +8590,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    return !!(decimals && decimals.match(/0+$/));
 	  },
 	  isAtDelimiter: function isAtDelimiter(num, str) {
-	    var props = arguments.length <= 2 || arguments[2] === undefined ? this.props : arguments[2];
+	    var props = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : this.props;
 
 	    var localeChar = _localizers.number.decimalChar(null, props.culture),
 	        lastIndex = str.length - 1,
@@ -9063,6 +9123,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	  },
 	  handleKeyDown: function handleKeyDown(e) {
 	    var key = e.key;
+	    var keyCode = e.keyCode;
 	    var altKey = e.altKey;
 	    var ctrlKey = e.ctrlKey;
 	    var noSearch = !this.props.searchTerm && !this._deletingText;
@@ -9099,7 +9160,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	    } else if (key === 'Home') {
 	      e.preventDefault();
 	      if (isOpen) this.setState(_extends({ focusedItem: list.first() }, nullTag));else tagList && this.setState({ focusedTag: tagList.first() });
-	    } else if (isOpen && key === 'Enter') {
+	    } else if (isOpen && keyCode === 13) {
+	      // using keyCode to ignore enter for japanese IME
 	      e.preventDefault();
 	      ctrlKey && this.props.onCreate || focusedItem === null ? this.handleCreate(this.props.searchTerm) : this.handleSelect(this.state.focusedItem);
 	    } else if (key === 'Escape') isOpen ? this.close() : tagList && this.setState(nullTag);else if (noSearch && key === 'ArrowLeft') tagList && this.setState({ focusedTag: tagList.prev(focusedTag) });else if (noSearch && key === 'ArrowRight') tagList && this.setState({ focusedTag: tagList.next(focusedTag) });else if (noSearch && key === 'Delete') tagList && tagList.remove(focusedTag);else if (noSearch && key === 'Backspace') tagList && tagList.removeNext();
@@ -9379,7 +9441,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	            _react2.default.createElement(
 	              'span',
 	              { className: 'rw-tag-btn', 'aria-hidden': 'true' },
-	              '×'
+	              '\xD7'
 	            )
 	          )
 	        );
